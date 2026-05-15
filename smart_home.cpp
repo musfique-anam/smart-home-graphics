@@ -8,6 +8,15 @@
 #include <string>
 #include <algorithm>
 
+#include "person_animation.h"
+
+// === FORWARD DECLARATIONS (fixes "not declared in this scope") =======
+void onMouse(int btn, int state, int mx, int my);
+void onMouseMove(int mx, int my);
+void onPassiveMove(int mx, int my);
+void reshape(int w, int h);
+// =====================================================================
+
 
 //  WINDOW & LAYOUT :
 
@@ -851,24 +860,39 @@ void drawSidebar(){
 
     // Brightness sliders
     col(0.25f,0.42f,0.58f);drawTextSmall(x,y,"Brightness"); y-=18;
-    for(int i=0;i<4;i++){
-        addSlider(x,y-8,(w-14)/4.f*1.f,&lightBright[i],0.2f,1.f,"",&lightOn[i],20+i);
-        // draw with mini label
-        Slider&sl=sliders[nSliders-1];
-        float ratio=(lightBright[i]-0.2f)/0.8f;
-        col(lightOn[i]?0.08f:0.05f, lightOn[i]?0.14f:0.09f, lightOn[i]?0.22f:0.15f);
-        fillRect(sl.x,sl.y+3,sl.w,4);
-        if(lightOn[i]) col(1.f,0.88f,0.15f); else col(0.14f,0.26f,0.40f);
-        fillRect(sl.x,sl.y+3,sl.w*ratio,4);
-        if(lightOn[i]) col(1.f,0.88f,0.15f); else col(0.22f,0.42f,0.58f);
-        fillCircle(sl.x+sl.w*ratio,sl.y+5,5);
-        char buf[4]; snprintf(buf,sizeof(buf),"%d",(int)(lightBright[i]*100));
-        col(0.3f,0.5f,0.65f); drawTextSmall(sl.x,sl.y-4,lnames[i]);
-        sl.x+=(w-14)/4.f+4;
-        // re-register correct x
-        sliders[nSliders-1].x=x+(i)*((w)/4.f);
+
+    // ── Master Brightness (one regulator for all lights) ──
+    col(0.25f,0.42f,0.58f); drawTextSmall(x,y,"Master Brightness"); y-=18;
+
+    static float masterBright = 1.0f;   // shared brightness value
+    // keep masterBright in sync if any light is on
+    bool anyOn = lightOn[0] || lightOn[1] || lightOn[2] || lightOn[3];
+
+    addSlider(x, y-8, w-14, &masterBright, 0.2f, 1.f, "All Lights", &anyOn, 20);
+
+    // Draw the slider
+    {
+        Slider& sl = sliders[nSliders-1];
+        float ratio = (masterBright - 0.2f) / 0.8f;
+
+        col(anyOn?0.08f:0.05f, anyOn?0.14f:0.09f, anyOn?0.22f:0.15f);
+        fillRect(sl.x, sl.y+3, sl.w, 5);
+
+        if(anyOn) col(1.f,0.88f,0.15f); else col(0.14f,0.26f,0.40f);
+        fillRect(sl.x, sl.y+3, sl.w*ratio, 5);
+
+        if(anyOn) col(1.f,0.88f,0.15f); else col(0.22f,0.42f,0.58f);
+        fillCircle(sl.x + sl.w*ratio, sl.y+5, 6);
+
+        char buf[8]; snprintf(buf,sizeof(buf),"%d%%",(int)(masterBright*100));
+        col(0.3f,0.7f,0.95f); drawTextSmall(sl.x + sl.w + 6, sl.y+8, buf);
     }
-    y-=18;
+
+    // Apply master value to all 4 light brightness variables
+    for(int i=0;i<4;i++) lightBright[i] = masterBright;
+
+    y-=22;
+    
 
     col(0.12f,0.22f,0.35f);fillRect(x,y,w,1);y-=12;
 
@@ -952,6 +976,34 @@ void drawSidebar(){
     addBtn(x+bw+4, y-bh, bw,bh,"ALL OFF",&allOff,1.f,0.3f,0.2f,101);
     drawBtn(sideButtons[nSideButtons-2]);
     drawBtn(sideButtons[nSideButtons-1]);
+
+        // ── Person Control ──
+    y -= bh + 10;
+    col(0.12f,0.22f,0.35f); fillRect(x, y, w, 1); y -= 12;
+    col(0.3f,0.52f,0.68f); drawTextSmall(x, y, "── PERSON ──"); y -= 16;
+
+    static bool dummyP = false;   // dummy state pointer for action buttons
+
+    // Row 1: Living + Bedroom
+    addBtn(x,           y - bh, bw, bh, "Go Living",   &dummyP, 0.2f, 0.8f, 1.f, 200);
+    addBtn(x + bw + 4,  y - bh, bw, bh, "Go Bedroom",  &dummyP, 0.2f, 0.8f, 1.f, 201);
+    drawBtn(sideButtons[nSideButtons-2]);
+    drawBtn(sideButtons[nSideButtons-1]);
+    y -= bh + 4;
+
+    // Row 2: Kitchen + Bathroom
+    addBtn(x,           y - bh, bw, bh, "Go Kitchen",  &dummyP, 0.2f, 0.8f, 1.f, 202);
+    addBtn(x + bw + 4,  y - bh, bw, bh, "Go Bathroom", &dummyP, 0.2f, 0.8f, 1.f, 203);
+    drawBtn(sideButtons[nSideButtons-2]);
+    drawBtn(sideButtons[nSideButtons-1]);
+    y -= bh + 4;
+
+    // Row 3: Exit Front + Exit Back
+    addBtn(x,           y - bh, bw, bh, "Exit Front",  &dummyP, 1.f, 0.5f, 0.2f, 204);
+    addBtn(x + bw + 4,  y - bh, bw, bh, "Exit Back",   &dummyP, 1.f, 0.5f, 0.2f, 205);
+    drawBtn(sideButtons[nSideButtons-2]);
+    drawBtn(sideButtons[nSideButtons-1]);
+    y -= bh + 4;
 }
 
 
@@ -968,7 +1020,7 @@ void drawStatusBar(){
 
     // Title
     col(0.f,0.78f,1.f);
-    drawTextLarge(bx+10, by+bh-14,"SMART HOME AUTOMATION SYSTEM");
+    drawTextLarge(bx+10, by+bh-14,"SMART HOME AUTOMATION VISUALIZATION");
 
     // Clock (simulated)
     time_t now=time(nullptr);
@@ -1033,6 +1085,7 @@ void display(){
 
     drawSky();
     drawHouse();
+    personDraw();
     drawStatusBar();
     drawSidebar();
     drawHint();
@@ -1045,6 +1098,7 @@ void display(){
 
 void onTimer(int){
     gTime += 0.016f;
+    personUpdate(0.016f);
 
     // Fan animation
     for(int i=0;i<2;i++){
@@ -1103,63 +1157,7 @@ void setAll(bool v){
 
 //  MOUSE :
 
-void onMouse(int btn,int state,int mx,int my){
-    float x=(float)mx, y=(float)(WIN_H-my);
-    if(btn==GLUT_LEFT_BUTTON && state==GLUT_DOWN){
-        // Buttons
-        for(int i=0;i<nSideButtons;i++){
-            Btn&b=sideButtons[i];
-            if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h){
-                if(b.id==91){
-                    // Weather cycle
-                    weather=(WeatherType)((weather+1)%3);
-                    if(weather==WEATHER_RAINY) initRain();
-                } else if(b.id==100){
-                    setAll(true);
-                } else if(b.id==101){
-                    setAll(false); alarmOn=false;
-                } else {
-                    *b.state=!*b.state;
-                }
-                return;
-            }
-        }
-        // Sliders
-        for(int i=0;i<nSliders;i++){
-            Slider&s=sliders[i];
-            if(x>=s.x-5&&x<=s.x+s.w+5&&y>=s.y-6&&y<=s.y+20){
-                activeSlider=s.id;
-                float v=s.mn+(x-s.x)/s.w*(s.mx-s.mn);
-                *s.val=std::max(s.mn,std::min(s.mx,v));
-                return;
-            }
-        }
-    }
-    if(btn==GLUT_LEFT_BUTTON && state==GLUT_UP)
-        activeSlider=0;
-}
 
-void onMouseMove(int mx,int my){
-    float x=(float)mx, y=(float)(WIN_H-my);
-    // Hover
-    hoverBtn=-1;
-    for(int i=0;i<nSideButtons;i++){
-        Btn&b=sideButtons[i];
-        if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h){ hoverBtn=b.id; break; }
-    }
-    // Dragging slider
-    if(activeSlider!=0){
-        for(int i=0;i<nSliders;i++){
-            if(sliders[i].id==activeSlider){
-                Slider&s=sliders[i];
-                float v=s.mn+(x-s.x)/s.w*(s.mx-s.mn);
-                *s.val=std::max(s.mn,std::min(s.mx,v));
-                break;
-            }
-        }
-    }
-    glutPostRedisplay();
-}
 
 void onPassiveMove(int mx,int my){
     onMouseMove(mx,my);
@@ -1190,9 +1188,112 @@ void onKeyboard(unsigned char key,int,int){
             break;
         case '0': setAll(true);  break;
         case '-': setAll(false); alarmOn=false; break;
+
+        //person animation shortcuts
+        case 'L': case 'l': personGoToRoom(0); break; // Living
+        case 'B': case 'b': personGoToRoom(1); break; // Bedroom
+        case 'K': case 'k': personGoToRoom(2); break; // Kitchen
+        case 'H': case 'h': personGoToRoom(3); break; // Bathroom
+        case 'F': case 'f': personLeaveHome(0); break; // Exit through FRONT
+        case 'G': case 'g': personLeaveHome(1); break; // Exit through GARAGE/BACK
     }
     glutPostRedisplay();
 }
+
+// === FULLSCREEN MOUSE FIX ===========================================
+// Track the real window size so mouse coords can be mapped back
+// into the logical WIN_W x WIN_H coordinate space used by the UI.
+int gWinW = WIN_W;
+int gWinH = WIN_H;
+
+void reshape(int w, int h) {
+    gWinW = (w > 0) ? w : 1;
+    gWinH = (h > 0) ? h : 1;
+    glViewport(0, 0, gWinW, gWinH);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluOrtho2D(0, WIN_W, 0, WIN_H);   // keep logical coords
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+}
+
+// Helper: convert raw GLUT mouse pixel (mx,my) -> logical (x,y)
+static inline void mapMouse(int mx, int my, float& x, float& y) {
+    x = (float)mx * (float)WIN_W / (float)gWinW;
+    y = (float)(gWinH - my) * (float)WIN_H / (float)gWinH;
+}
+
+void onMouse(int btn, int state, int mx, int my) {
+    if (btn != GLUT_LEFT_BUTTON) return;
+    float x, y; mapMouse(mx, my, x, y);
+
+    if (state == GLUT_DOWN) {
+        // Buttons
+        for (int i = 0; i < nSideButtons; i++) {
+            const Btn& b = sideButtons[i];
+            if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+                if (b.id == 91) {
+                    weather = (WeatherType)((weather + 1) % 3);
+                    if (weather == WEATHER_RAINY) initRain();
+                } else if (b.id == 100) {
+                    setAll(true);
+                } else if (b.id == 101) {
+                    setAll(false); alarmOn = false;
+                }     
+                // ── Person buttons ──
+                else if (b.id == 200) { personGoToRoom(0); }   // Living
+                else if (b.id == 201) { personGoToRoom(1); }   // Bedroom
+                else if (b.id == 202) { personGoToRoom(2); }   // Kitchen
+                else if (b.id == 203) { personGoToRoom(3); }   // Bathroom
+                else if (b.id == 204) { personLeaveHome(0); }  // Front exit
+                else if (b.id == 205) { personLeaveHome(1); }  // Back/Garage exit
+                else {
+                    *b.state = !*b.state;
+                }
+                return;
+            }
+        }
+        // Sliders
+        for (int i = 0; i < nSliders; i++) {
+            const Slider& s = sliders[i];
+            if (x >= s.x - 5 && x <= s.x + s.w + 5 && y >= s.y - 6 && y <= s.y + 20) {
+                activeSlider = s.id;
+                float v = s.mn + (x - s.x) / s.w * (s.mx - s.mn);
+                *s.val = std::max(s.mn, std::min(s.mx, v));
+                return;
+            }
+        }
+    }
+    if (state == GLUT_UP) activeSlider = 0;
+}
+
+void onMouseMove(int mx, int my) {
+    float x, y; mapMouse(mx, my, x, y);
+
+    hoverBtn = -1;
+    for (int i = 0; i < nSideButtons; i++) {
+        const Btn& b = sideButtons[i];
+        if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+            hoverBtn = b.id; break;
+        }
+    }
+    if (activeSlider != 0) {
+        for (int i = 0; i < nSliders; i++) {
+            Slider& s = sliders[i];
+            if (s.id == activeSlider) {
+                float v = s.mn + (x - s.x) / s.w * (s.mx - s.mn);
+                *s.val = std::max(s.mn, std::min(s.mx, v));
+
+                // NEW: if it's the master brightness slider, sync all lights
+                if (s.id == 20) {
+                    for (int k = 0; k < 4; k++) lightBright[k] = *s.val;
+                }
+                break;
+            }
+        }
+    }
+}
+// === END FULLSCREEN MOUSE FIX ========================================
 
 
 //  MAIN :
@@ -1217,6 +1318,13 @@ int main(int argc,char**argv){
     glutMotionFunc(onMouseMove);
     glutPassiveMotionFunc(onPassiveMove);
     glutTimerFunc(16,onTimer,0);
+
+    glutReshapeFunc(reshape);
+    glutMouseFunc(onMouse);
+    glutMotionFunc(onMouseMove);
+    glutPassiveMotionFunc(onMouseMove);
+
+    personInit();
 
     glutMainLoop();
     return 0;
